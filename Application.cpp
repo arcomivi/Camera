@@ -1,6 +1,9 @@
 #include "Application.h"
 
-
+/**
+ * @brief Application::Application
+ * @param parent
+ */
 Application::Application(QObject *parent) : QObject(parent) {
 
 }
