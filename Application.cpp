@@ -7,7 +7,6 @@
  * @param parent
  */
 Application::Application(QObject *parent) : QObject(parent)
-    , m_webSocket(Q_NULLPTR)
     , m_webSocketServer(Q_NULLPTR)
     , m_camera(Q_NULLPTR)
     , m_videoSurface(Q_NULLPTR) {
@@ -60,6 +59,8 @@ void Application::run() {
         if(m_webSocketServer->listen(QHostAddress::Any, 8080)) {
             connect(m_webSocketServer, &QWebSocketServer::newConnection, this, &Application::onNewConnection);
             qDebug() << "Listening on: " << m_webSocketServer->serverUrl() << m_webSocketServer->serverPort();
+            setServerUrl(m_webSocketServer->serverUrl().toString());
+            emit updateText(m_webSocketServer->serverUrl().toString());
         }
     }
 }
@@ -94,66 +95,34 @@ void Application::startCameraQml() {
     }
 }
 
-void Application::clientConnected() {
-    qDebug() << "clientConnected";
-    m_webSocket->sendTextMessage(QStringLiteral("Hello, world!"));
-}
-
-void Application::clientClosed() {
-    qDebug() << "clientClosed";
-}
-
-void Application::createClient() {
-    qDebug() << __FUNCTION__;
-    if(!m_webSocket)    {
-        m_webSocket = new QWebSocket();
-        connect(m_webSocket, &QWebSocket::connected, this, &Application::clientConnected);
-        connect(m_webSocket, &QWebSocket::disconnected, this, &Application::clientClosed);
-        connect(m_webSocket, &QWebSocket::binaryMessageReceived, this, &Application::clientReceivedBinary);
-        connect(m_webSocket, &QWebSocket::textMessageReceived, this, &Application::clientReceivedText);
-        connect(m_webSocket, static_cast<void(QWebSocket::*)(QAbstractSocket::SocketError)>(&QWebSocket::error), this, &Application::onError);
-        m_webSocket->setParent(this);
-    }
-    m_webSocket->open(m_webSocketServer->serverUrl());
-}
-
-void Application::closeClient() {
-    m_webSocket->close();
-    qDebug() << __FUNCTION__ << "disconnected";
-}
-
-void Application::onError(QAbstractSocket::SocketError error) {
-    qDebug() << __FUNCTION__ << error << ((m_webSocket != Q_NULLPTR) ? m_webSocket->errorString() : "");
-}
-
-void Application::clientReceivedBinary(const QByteArray &message) {
-    qDebug() << __FUNCTION__ << message;
-    //m_frameProvider->onNewVideoContentReceived()
-}
-
-void Application::clientReceivedText(const QString &message) {
-    qDebug() << __FUNCTION__ << message;
-}
-
 void Application::onNewConnection() {
     qDebug() << __FUNCTION__;
     QWebSocket *socket = m_webSocketServer->nextPendingConnection();
     connect(socket, &QWebSocket::textMessageReceived, this, &Application::processTextMessage);
     connect(socket, &QWebSocket::binaryMessageReceived, this, &Application::processBinaryMessage);
     connect(socket, &QWebSocket::disconnected, this, &Application::socketDisconnected);
+    connect(socket, static_cast<void(QWebSocket::*)(QAbstractSocket::SocketError)>(&QWebSocket::error), this, &Application::onError);
+    qDebug() << __FUNCTION__ << socket->readBufferSize();
     m_clients << socket;
 }
 
-void Application::processTextMessage(QString message) {
+void Application::onError(QAbstractSocket::SocketError error) {
     QWebSocket *client = qobject_cast<QWebSocket *>(sender());
+    if(!client) { return; }
+    qDebug() << __FUNCTION__ << error << ((client != Q_NULLPTR) ? client->errorString() : "");
+}
+
+void Application::processTextMessage(QString message) {
+    //QWebSocket *client = qobject_cast<QWebSocket *>(sender());
     qDebug() << "Message received:" << message;
-    if(client) { client->sendTextMessage(message); }
+    //if(client) { client->sendTextMessage(message); }
+    m_counter = 1;
 }
 
 void Application::processBinaryMessage(QByteArray message) {
-    QWebSocket *client = qobject_cast<QWebSocket *>(sender());
+    //QWebSocket *client = qobject_cast<QWebSocket *>(sender());
     qDebug() << "Binary Message received:" << message;
-    if(client) { client->sendBinaryMessage(message); }
+    //if(client) { client->sendBinaryMessage(message); }
 }
 
 void Application::socketDisconnected() {
@@ -164,23 +133,27 @@ void Application::socketDisconnected() {
         client->deleteLater();
     }
 }
-
+#include <QThread>
 void Application::onNewVideoContentReceived(const QVideoFrame &frame) {
-    emit updateText("onNewVideoContentReceived");
+    //emit updateText("onNewVideoContentReceived");
     if(frame.isValid()) {
-        emit updateText("validFrame");
+        //emit updateText("validFrame");
     }
     if((m_counter % 15 ) == 0 && !m_clients.isEmpty()) {
-        qDebug() << "sending frame" << m_counter;
+        qDebug() << "sending frame" << m_counter << m_clients.size();
         QVideoFrame clone(frame);
         clone.map(QAbstractVideoBuffer::ReadOnly);
+        QImage img = QImage(clone.bits(), clone.width(), clone.height(), QVideoFrame::imageFormatFromPixelFormat(clone.pixelFormat()));
+        qDebug() << clone.pixelFormat()
+                 << QVideoFrame::imageFormatFromPixelFormat(clone.pixelFormat())
+                 << clone.height()
+                 << clone.width();
         //        qDebug() << clone->isMapped();
         //frame.map(QAbstractVideoBuffer::ReadOnly);
         //        QByteArray *datagram = new QByteArray((char *)(clone->bits()), clone->mappedBytes());
         QByteArray datagram((char *)(clone.bits()), clone.mappedBytes());
-        qDebug() << datagram.size();
+        //qDebug() << datagram.size();
 
-        QImage i;
         QByteArray block;
         QDataStream stream(&block, QIODevice::WriteOnly);
 
@@ -189,17 +162,32 @@ void Application::onNewVideoContentReceived(const QVideoFrame &frame) {
         //        stream.device()->seek(0);
         //        stream << qint16(block.size() - sizeof(qint16));
 
+        QByteArray arr;
+        QDataStream ds(&arr, QIODevice::ReadWrite);
+        //        ds.writeRawData((const char *)clone.bits(), clone.mappedBytes());
+        ds.writeRawData((const char *)img.bits(), img.byteCount());
+        ds.device()->seek(0);
 
         QWebSocket *client = m_clients.at(0);
         if(client) {
-            //            QByteArray array = "Broadcasting frame " + QByteArray::number(m_counter);
-            client->sendTextMessage("Sending frame...");
-            qDebug() << client->sendBinaryMessage(block);
+            qDebug() << arr.size();
+            //            qDebug() << client->sendBinaryMessage(QByteArray("Hello"));
+            qDebug() << client->sendBinaryMessage(arr);
+            //            qDebug() << client->sendBinaryMessage(QByteArray("Bye"));
         }
-        //writer->writeDatagram((char*)clone->bits(),clone->mappedBytes(),QHostAddress::Broadcast, 45454);
         clone.unmap();
+        //writer->writeDatagram((char*)clone->bits(),clone->mappedBytes(),QHostAddress::Broadcast, 45454);
     }
     m_counter++;
+}
+
+QString Application::serverUrl() const {
+    return m_serverUrl;
+}
+
+void Application::setServerUrl(const QString &serverUrl) {
+    m_serverUrl = serverUrl;
+    emit serverUrlChanged(m_serverUrl);
 }
 
 QList<QVideoFrame::PixelFormat> MyVideoSurface::supportedPixelFormats(QAbstractVideoBuffer::HandleType type) const {

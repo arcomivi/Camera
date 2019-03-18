@@ -7,7 +7,7 @@ Window {
     color: "lightgrey"
     width: Qt.platform.os==="windows" ? 640 : Screen.width
     height: Qt.platform.os==="windows" ? 480 : Screen.height
-    title: qsTr("Hello World")
+    title: qsTr("Server: ") + $application.serverUrl
     //    Camera {
     //        id: camera
     //        objectName: "myCamera"
@@ -34,39 +34,6 @@ Window {
         anchors.top: parent.top
         width: parent.width
         source: $provider
-    }
-    Row {
-        spacing: 1
-        Rectangle {
-            id: startClient
-            width: 50
-            height: 50
-            Text {
-                text: qsTr("Start")
-                anchors.centerIn: parent
-            }
-            MouseArea {
-                anchors.fill: parent;
-                onClicked: {
-                    $application.createClient();
-                }
-            }
-        }
-        Rectangle {
-            id: closeClient
-            width: 50
-            height: 50
-            Text {
-                text: qsTr("Close")
-                anchors.centerIn: parent
-            }
-            MouseArea {
-                anchors.fill: parent;
-                onClicked: {
-                    $application.closeClient();
-                }
-            }
-        }
     }
 
     Rectangle {

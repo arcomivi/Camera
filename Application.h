@@ -84,30 +84,29 @@ class MyVideoSurface : public QAbstractVideoSurface {
 
 class Application : public QObject {
         Q_OBJECT
+        Q_PROPERTY(QString serverUrl READ serverUrl WRITE setServerUrl NOTIFY serverUrlChanged)
     public:
         explicit Application(QObject *parent = Q_NULLPTR);
         ~Application();
         void run();
         void startQCamera();
         void startCameraQml();
+        QString serverUrl() const;
+        void setServerUrl(const QString &serverUrl);
+
     signals:
         void updateText(QString text);
+        void serverUrlChanged(QString serverUrl);
     public slots:
-        void clientConnected();
-        void clientClosed();
-        void createClient();
-        void closeClient();
         void onError(QAbstractSocket::SocketError error);
-        void clientReceivedBinary(const QByteArray &message);
-        void clientReceivedText(const QString &message);
         void onNewConnection();
         void processTextMessage(QString message);
         void processBinaryMessage(QByteArray message);
         void socketDisconnected();
         void onNewVideoContentReceived(const QVideoFrame &frame);
     private:
+        QString m_serverUrl;
         int m_counter;
-        QWebSocket *m_webSocket;
         QList<QWebSocket *> m_clients;
         QWebSocketServer *m_webSocketServer;
         QQmlApplicationEngine m_engine;
